@@ -317,5 +317,55 @@
     // Focus input on load
     inputEl.focus();
   </script>
+  <script>
+const socket = io();
+
+const nameInput = document.getElementById("guestName");
+const sendBtn = document.getElementById("sendBtn");
+const messageInput = document.getElementById("messageInput");
+
+let username = localStorage.getItem("chatUsername");
+
+// Disable send until name is set
+if (!username) {
+  sendBtn.disabled = true;
+  messageInput.disabled = true;
+} else {
+  nameInput.value = username;
+}
+
+// When user types a name
+nameInput.addEventListener("change", () => {
+  const newName = nameInput.value.trim();
+  if (newName.length > 0) {
+    username = newName;
+    localStorage.setItem("chatUsername", username);
+    sendBtn.disabled = false;
+    messageInput.disabled = false;
+  }
+});
+
+// Send message
+sendBtn.addEventListener("click", () => {
+  const text = messageInput.value.trim();
+  if (!username) {
+    alert("Please set your name before chatting!");
+    return;
+  }
+  if (text.length > 0) {
+    socket.emit("message", { user: username, text });
+    messageInput.value = "";
+  }
+});
+
+// Display messages
+socket.on("message", (data) => {
+  const msgDiv = document.createElement("div");
+  msgDiv.classList.add("message");
+  msgDiv.innerHTML = `<strong>${data.user}:</strong> ${data.text}`;
+  document.getElementById("messages").appendChild(msgDiv);
+  msgDiv.scrollIntoView();
+});
+</script>
 </body>
 </html>
