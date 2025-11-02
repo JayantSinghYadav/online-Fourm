@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Spidy's World Chat — FOURM</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app" role="application">
+    <div class="left">
+      <div class="header">
+        <div class="logo">💬</div>
+        <div>
+          <div class="title">Spidy's World Chat — FOURM</div>
+          <div class="sub">Messages sync across devices in real time</div>
+        </div>
+      </div>
+
+      <div id="messages" class="messages" aria-live="polite"></div>
+
+      <div style="display:flex;gap:12px;align-items:flex-end">
+        <div style="flex:1">
+          <div class="composer">
+            <textarea id="messageInput" placeholder="Type a message... (Shift+Enter = newline)" aria-label="Message"></textarea>
+            <button id="sendBtn" class="btn">Send</button>
+          </div>
+        </div>
+        <div class="controls">
+          <button id="clearBtn" class="ghost" title="Clear all messages">Clear</button>
+          <button id="exportBtn" class="ghost" title="Export messages">Export</button>
+        </div>
+      </div>
+    </div>
+
+    <aside class="right">
+      <div class="panel">
+        <div class="section-title">Your guest identity</div>
+        <div class="guest">
+          <div class="avatar" id="myAvatar">G</div>
+          <input id="guestName" maxlength="24" />
+        </div>
+        <div class="small" style="margin-top:8px">Your name is saved only in this browser. Change it anytime.</div>
+      </div>
+
+      <div class="panel">
+        <div class="section-title">How it works</div>
+        <div class="small">Join telegram for updates.</div>
+      </div>
+    </aside>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+    import { getDatabase, ref, push, onChildAdded, remove, get } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
+
+    // Your web app's Firebase configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyAyoewRhKrZgAoJKkltvKqgN0EjAqgTD7I",
+      authDomain: "webchat-d14ad.firebaseapp.com",
+      databaseURL: "https://webchat-d14ad-default-rtdb.firebaseio.com",
+      projectId: "webchat-d14ad",
+      storageBucket: "webchat-d14ad.appspot.com",
+      messagingSenderId: "751259298079",
+      appId: "1:751259298079:web:0944d524ca38bbbbc7e82a",
+      measurementId: "G-YQN44V8GFM"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const messagesRef = ref(db, "messages");
+
+    // Elements
+    const messagesEl = document.getElementById("messages");
+    const inputEl = document.getElementById("messageInput");
+    const sendBtn = document.getElementById("sendBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const exportBtn = document.getElementById("exportBtn");
+    const guestNameEl = document.getElementById("guestName");
+    const myAvatarEl = document.getElementById("myAvatar");
+
+    // Guest name
+    function randomGuest() {
+      return "Guest" + Math.floor(Math.random() * 9000 + 100);
+    }
+    let myName = localStorage.getItem("guest-name") || randomGuest();
+    guestNameEl.value = myName;
+    myAvatarEl.textContent = nameToInitial(myName);
+
+    // Prevent duplicate guest names (live check)
+    async function isNameTaken(name) {
+      const snap = await get(messagesRef);
+      const data = snap.val() || {};
+      return Object.values(data).some(m => m.name === name && name !== myName);
+    }
+
+    guestNameEl.addEventListener("change", async () => {
+      let newName = guestNameEl.value.trim() || randomGuest();
+      if (await isNameTaken(newName)) {
+        alert("This name is already in use in this chat. Please choose another.");
+        guestNameEl.value = myName;
+        return;
+      }
+      myName = newName;
+      localStorage.setItem("guest-name", myName);
+      myAvatarEl.textContent = nameToInitial(myName);
+    });
+
+    function nameToInitial(name) {
+      return name.trim().split(" ").map(s => s[0]?.toUpperCase()).slice(0, 2).join("") || "G";
+    }
+
+    // Render message
+    function renderMessage(m) {
+      const el = document.createElement("div");
+      el.className = "msg";
+
+      const avatar = document.createElement("div");
+      avatar.className = "avatar";
+      avatar.textContent = nameToInitial(m.name);
+
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.textContent = m.name + " • " + new Date(m.ts).toLocaleString();
+
+      const text = document.createElement("div");
+      text.className = "text";
+      text.textContent = m.text;
+
+      bubble.appendChild(meta);
+      bubble.appendChild(text);
+
+      el.appendChild(avatar);
+      el.appendChild(bubble);
+
+      messagesEl.appendChild(el);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    // Load messages live
+    onChildAdded(messagesRef, (snapshot) => {
+      const m = snapshot.val();
+      renderMessage(m);
+    });
+
+    // Send message
+    function sendMessage() {
+      const raw = inputEl.value.trim();
+      if (!raw) return;
+      const msg = { name: myName, text: raw, ts: Date.now() };
+      push(messagesRef, msg);
+      inputEl.value = "";
+      inputEl.focus();
+    }
+
+    sendBtn.addEventListener("click", sendMessage);
+    inputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    // Clear chat
+    clearBtn.addEventListener("click", async () => {
+      if (!confirm("Clear ALL messages from database?")) return;
+      await remove(messagesRef);
+      messagesEl.innerHTML = "";
+    });
+
+    // Export messages
+    exportBtn.addEventListener("click", async () => {
+      const snap = await get(messagesRef);
+      const data = snap.val() || {};
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "chat-messages.json";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    });
+
+    // Focus input on load
+    inputEl.focus();
+  </script>
+</body>
+</html>
